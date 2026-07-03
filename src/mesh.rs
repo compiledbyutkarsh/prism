@@ -104,3 +104,73 @@ pub fn load_gltf(path: &str) -> Result<MeshData> {
 
     Ok(MeshData { vertices, indices })
 }
+
+
+/// Generates a procedural cube mesh with correct per-face normals
+/// (flat shading). Useful for testing the render pipeline before
+/// real glTF assets are wired in.
+pub fn generate_cube() -> MeshData {
+    // Each face has its own 4 vertices so normals stay flat/correct per face.
+    let face = |normal: [f32; 3], positions: [[f32; 3]; 4]| -> Vec<Vertex> {
+        let uvs = [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+        positions
+            .iter()
+            .zip(uvs.iter())
+            .map(|(&position, &uv)| Vertex {
+                position,
+                normal,
+                uv,
+            })
+            .collect()
+    };
+
+    let mut vertices = Vec::new();
+
+    // +Z (front)
+    vertices.extend(face(
+        [0.0, 0.0, 1.0],
+        [[-0.5, -0.5, 0.5], [0.5, -0.5, 0.5], [0.5, 0.5, 0.5], [-0.5, 0.5, 0.5]],
+    ));
+    // -Z (back)
+    vertices.extend(face(
+        [0.0, 0.0, -1.0],
+        [[0.5, -0.5, -0.5], [-0.5, -0.5, -0.5], [-0.5, 0.5, -0.5], [0.5, 0.5, -0.5]],
+    ));
+    // +X (right)
+    vertices.extend(face(
+        [1.0, 0.0, 0.0],
+        [[0.5, -0.5, 0.5], [0.5, -0.5, -0.5], [0.5, 0.5, -0.5], [0.5, 0.5, 0.5]],
+    ));
+    // -X (left)
+    vertices.extend(face(
+        [-1.0, 0.0, 0.0],
+        [[-0.5, -0.5, -0.5], [-0.5, -0.5, 0.5], [-0.5, 0.5, 0.5], [-0.5, 0.5, -0.5]],
+    ));
+    // +Y (top)
+    vertices.extend(face(
+        [0.0, 1.0, 0.0],
+        [[-0.5, 0.5, 0.5], [0.5, 0.5, 0.5], [0.5, 0.5, -0.5], [-0.5, 0.5, -0.5]],
+    ));
+    // -Y (bottom)
+    vertices.extend(face(
+        [0.0, -1.0, 0.0],
+        [[-0.5, -0.5, -0.5], [0.5, -0.5, -0.5], [0.5, -0.5, 0.5], [-0.5, -0.5, 0.5]],
+    ));
+
+    let mut indices = Vec::new();
+    for face_idx in 0..6u32 {
+        let base = face_idx * 4;
+        indices.extend_from_slice(&[
+            base, base + 1, base + 2,
+            base, base + 2, base + 3,
+        ]);
+    }
+
+    log::info!(
+        "Generated procedural cube: {} vertices, {} indices",
+        vertices.len(),
+        indices.len()
+    );
+
+    MeshData { vertices, indices }
+}
