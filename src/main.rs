@@ -1,3 +1,4 @@
+mod scene;
 use std::sync::Arc;
 use winit::{
     event::{Event, WindowEvent},
@@ -6,6 +7,7 @@ use winit::{
 };
 
 struct State {
+    scene: crate::scene::Scene,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -115,7 +117,12 @@ impl State {
             multiview: None,
         });
 
+        let mut scene = crate::scene::Scene::new();
+        scene.spawn_empty("TestEntity", crate::scene::Transform::default());
+        log::info!("Scene initialized with test entity");
+
         Self {
+            scene,
             surface,
             device,
             queue,
