@@ -16,6 +16,8 @@ pollster = "0.3"
 env_logger = "0.11"
 log = "0.4"
 anyhow = "1.0"
+gltf = { version = "1.4", features = ["import"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 
 [profile.release]
 opt-level = 3

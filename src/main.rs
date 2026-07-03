@@ -1,4 +1,5 @@
 mod scene;
+mod mesh;
 use std::sync::Arc;
 use winit::{
     event::{Event, WindowEvent},
