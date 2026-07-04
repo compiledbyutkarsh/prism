@@ -1,6 +1,7 @@
 mod scene;
 mod mesh;
 mod camera;
+mod material;
 
 use std::sync::Arc;
 use bytemuck;
@@ -31,6 +32,9 @@ struct State {
     camera_bind_group: wgpu::BindGroup,
 
     depth_texture_view: wgpu::TextureView,
+
+    material_buffer: wgpu::Buffer,
+    material_bind_group: wgpu::BindGroup,
 
     mouse_pressed: bool,
     last_mouse_pos: Option<(f64, f64)>,
@@ -146,7 +150,7 @@ impl State {
                 label: Some("prism_camera_bind_group_layout"),
                 entries: &[wgpu::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
                     ty: wgpu::BindingType::Buffer {
                         ty: wgpu::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
@@ -165,6 +169,39 @@ impl State {
             }],
         });
 
+        // --- Material setup ---
+        let material_uniform = crate::material::MaterialUniform::default();
+
+        let material_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("prism_material_buffer"),
+            contents: bytemuck::cast_slice(&[material_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+
+        let material_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("prism_material_bind_group_layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let material_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("prism_material_bind_group"),
+            layout: &material_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: material_buffer.as_entire_binding(),
+            }],
+        });
+
         // --- Shader + pipeline ---
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("prism_shader"),
@@ -173,7 +210,7 @@ impl State {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("prism_pipeline_layout"),
-            bind_group_layouts: &[&camera_bind_group_layout],
+            bind_group_layouts: &[&camera_bind_group_layout, &material_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -239,6 +276,8 @@ impl State {
             camera_buffer,
             camera_bind_group,
             depth_texture_view,
+            material_buffer,
+            material_bind_group,
             mouse_pressed: false,
             last_mouse_pos: None,
         }
@@ -318,6 +357,7 @@ impl State {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.material_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);

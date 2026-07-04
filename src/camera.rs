@@ -56,16 +56,21 @@ impl Camera {
 #[derive(Debug, Clone, Copy, Pod, Zeroable)]
 pub struct CameraUniform {
     pub view_proj: [[f32; 4]; 4],
+    pub camera_pos: [f32; 3],
+    pub _padding: f32, // WGSL requires vec3 fields to be 16-byte aligned
 }
 
 impl CameraUniform {
     pub fn new() -> Self {
         Self {
             view_proj: Mat4::IDENTITY.to_cols_array_2d(),
+            camera_pos: [0.0, 0.0, 0.0],
+            _padding: 0.0,
         }
     }
 
     pub fn update(&mut self, camera: &Camera) {
         self.view_proj = camera.view_projection_matrix().to_cols_array_2d();
+        self.camera_pos = camera.eye_position().to_array();
     }
 }
