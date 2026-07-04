@@ -2,6 +2,7 @@ mod scene;
 mod mesh;
 mod camera;
 mod material;
+mod gbuffer;
 
 use std::sync::Arc;
 use bytemuck;
@@ -19,7 +20,6 @@ struct State {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
-    render_pipeline: wgpu::RenderPipeline,
     window: Arc<winit::window::Window>,
 
     vertex_buffer: wgpu::Buffer,
@@ -31,10 +31,14 @@ struct State {
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
 
-    depth_texture_view: wgpu::TextureView,
-
     material_buffer: wgpu::Buffer,
     material_bind_group: wgpu::BindGroup,
+
+    depth_texture_view: wgpu::TextureView,
+    gbuffer: crate::gbuffer::GBuffer,
+
+    geometry_pipeline: wgpu::RenderPipeline,
+    lighting_pipeline: wgpu::RenderPipeline,
 
     mouse_pressed: bool,
     last_mouse_pos: Option<(f64, f64)>,
@@ -116,6 +120,7 @@ impl State {
         surface.configure(&device, &config);
 
         let depth_texture_view = create_depth_view(&device, &config);
+        let gbuffer = crate::gbuffer::GBuffer::new(&device, config.width, config.height);
 
         // --- Mesh setup ---
         let mesh_data = crate::mesh::generate_cube();
@@ -202,34 +207,31 @@ impl State {
             }],
         });
 
-        // --- Shader + pipeline ---
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("prism_shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        // --- Geometry pass pipeline (writes to G-buffer) ---
+        let gbuffer_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("prism_gbuffer_shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("gbuffer.wgsl").into()),
         });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("prism_pipeline_layout"),
-            bind_group_layouts: &[&camera_bind_group_layout, &material_bind_group_layout],
-            push_constant_ranges: &[],
-        });
+        let geometry_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("prism_geometry_pipeline_layout"),
+                bind_group_layouts: &[&camera_bind_group_layout, &material_bind_group_layout],
+                push_constant_ranges: &[],
+            });
 
-        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("prism_render_pipeline"),
-            layout: Some(&pipeline_layout),
+        let geometry_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("prism_geometry_pipeline"),
+            layout: Some(&geometry_pipeline_layout),
             vertex: wgpu::VertexState {
-                module: &shader,
+                module: &gbuffer_shader,
                 entry_point: "vs_main",
                 buffers: &[crate::mesh::Vertex::desc()],
             },
             fragment: Some(wgpu::FragmentState {
-                module: &shader,
+                module: &gbuffer_shader,
                 entry_point: "fs_main",
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
+                targets: &crate::gbuffer::GBuffer::target_formats(),
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -255,6 +257,54 @@ impl State {
             multiview: None,
         });
 
+        // --- Lighting pass pipeline (fullscreen triangle, reads G-buffer) ---
+        let lighting_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("prism_lighting_shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("lighting.wgsl").into()),
+        });
+
+        let lighting_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("prism_lighting_pipeline_layout"),
+                bind_group_layouts: &[&camera_bind_group_layout, &gbuffer.bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+        let lighting_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("prism_lighting_pipeline"),
+            layout: Some(&lighting_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &lighting_shader,
+                entry_point: "vs_main",
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &lighting_shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+        });
+
         let mut scene = crate::scene::Scene::new();
         scene.spawn_empty("TestEntity", crate::scene::Transform::default());
         log::info!("Scene initialized with test entity");
@@ -266,7 +316,6 @@ impl State {
             queue,
             config,
             size,
-            render_pipeline,
             window,
             vertex_buffer,
             index_buffer,
@@ -275,9 +324,12 @@ impl State {
             camera_uniform,
             camera_buffer,
             camera_bind_group,
-            depth_texture_view,
             material_buffer,
             material_bind_group,
+            depth_texture_view,
+            gbuffer,
+            geometry_pipeline,
+            lighting_pipeline,
             mouse_pressed: false,
             last_mouse_pos: None,
         }
@@ -290,6 +342,8 @@ impl State {
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
             self.depth_texture_view = create_depth_view(&self.device, &self.config);
+            self.gbuffer
+                .resize(&self.device, new_size.width, new_size.height);
             self.camera.aspect = new_size.width as f32 / new_size.height as f32;
         }
     }
@@ -317,7 +371,7 @@ impl State {
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         let output = self.surface.get_current_texture()?;
-        let view = output
+        let swapchain_view = output
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -327,22 +381,11 @@ impl State {
                 label: Some("prism_encoder"),
             });
 
+        // --- Pass 1: Geometry pass — writes albedo/normal/position into G-buffer ---
         {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("prism_render_pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.02,
-                            g: 0.02,
-                            b: 0.05,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
+            let mut geometry_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("prism_geometry_pass"),
+                color_attachments: &self.gbuffer.color_attachments(),
                 depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
                     view: &self.depth_texture_view,
                     depth_ops: Some(wgpu::Operations {
@@ -355,12 +398,40 @@ impl State {
                 timestamp_writes: None,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
-            render_pass.set_bind_group(1, &self.material_bind_group, &[]);
-            render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-            render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+            geometry_pass.set_pipeline(&self.geometry_pipeline);
+            geometry_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            geometry_pass.set_bind_group(1, &self.material_bind_group, &[]);
+            geometry_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+            geometry_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+            geometry_pass.draw_indexed(0..self.num_indices, 0, 0..1);
+        }
+
+        // --- Pass 2: Lighting pass — fullscreen triangle reads G-buffer, computes PBR ---
+        {
+            let mut lighting_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("prism_lighting_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &swapchain_view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.02,
+                            g: 0.02,
+                            b: 0.05,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            lighting_pass.set_pipeline(&self.lighting_pipeline);
+            lighting_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            lighting_pass.set_bind_group(1, &self.gbuffer.bind_group, &[]);
+            lighting_pass.draw(0..3, 0..1);
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
@@ -420,9 +491,6 @@ fn main() {
                             state.handle_scroll(scroll_amount);
                         }
                         WindowEvent::TouchpadMagnify { delta, .. } => {
-                            // macOS pinch-to-zoom gesture; delta is a magnification
-                            // factor (e.g. 0.05 for pinch-out), so scale it up to
-                            // feel comparable to scroll-wheel zoom.
                             state.handle_scroll((*delta as f32) * 10.0);
                         }
                         WindowEvent::RedrawRequested => {
