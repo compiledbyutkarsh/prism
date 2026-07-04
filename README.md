@@ -1,55 +1,77 @@
-# prism
+# Prism ⚡
 
-A real-time 3D rendering engine built from scratch in Rust - no game engine, no shortcuts. Implements a deferred rendering pipeline with physically-based materials, running natively on Macs via the Metal backend.
+![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)
+![wgpu](https://img.shields.io/badge/wgpu-Metal-orange?style=for-the-badge)
+![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)
 
-## Features
+A real-time 3D rendering engine built from scratch in Rust — no game engine, no shortcuts. Implements a deferred rendering pipeline with physically-based materials, running natively on Macs via the Metal backend.
 
-- Deferred rendering pipeline - geometry pass writes to a G-buffer (albedo/metallic, normal/roughness, world position); a separate lighting pass computes per-pixel shading, decoupling lighting cost from scene complexity.
-- Physically-based rendering (PBR) - full metallic-roughness workflow with a Cook-Torrance BRDF (GGX normal distribution, Smith geometry function, Fresnel-Schlick approximation), the same lighting model used by Unreal Engine and Blender.
-- ECS-based scene graph - entities, transforms, and components managed via hecs, matching the architecture pattern used in Unity and Bevy.
-- glTF model loading - imports real-world 3D assets (positions, normals, UVs, indices) via the gltf crate, alongside a procedural mesh generator for pipeline testing.
-- Interactive camera - orbit controls via mouse drag, zoom via scroll wheel and trackpad pinch gestures.
-- GPU-native - built on wgpu, targeting the Metal backend directly (the same graphics API layer used by Firefox and the Bevy engine).
+---
 
-## Architecture
+## ✨ Features
 
-Geometry Pass renders mesh data into a G-buffer with three render targets:
-1. Albedo + Metallic
-2. Normal + Roughness
-3. World Position
+- 🎨 **Deferred rendering pipeline** — geometry pass writes to a G-buffer (albedo/metallic, normal/roughness, world position); a separate lighting pass computes per-pixel shading, decoupling lighting cost from scene complexity.
+- 💡 **Physically-based rendering (PBR)** — full metallic-roughness workflow with a Cook-Torrance BRDF (GGX normal distribution, Smith geometry function, Fresnel-Schlick approximation) — the same lighting model used by Unreal Engine and Blender.
+- 🧩 **ECS-based scene graph** — entities, transforms, and components managed via `hecs`, matching the architecture pattern used in Unity and Bevy.
+- 📦 **glTF model loading** — imports real-world 3D assets (positions, normals, UVs, indices) via the `gltf` crate, alongside a procedural mesh generator for pipeline testing.
+- 🖱️ **Interactive camera** — orbit controls via mouse drag, zoom via scroll wheel and trackpad pinch gestures.
+- ⚙️ **GPU-native** — built on `wgpu`, targeting the Metal backend directly — the same graphics API layer used by Firefox and the Bevy engine.
 
-The Lighting Pass then runs a single fullscreen triangle that samples the G-buffer and computes Cook-Torrance PBR shading per pixel.
+---
 
-Splitting geometry and lighting into separate passes means lighting complexity no longer scales with scene geometry - the same architecture used by Unreal Engine, CryEngine, and most modern AAA renderers.
+## 🏗️ Architecture
 
-## Tech Stack
+**Geometry Pass** renders mesh data into a G-buffer with three render targets:
 
-- GPU API: wgpu (Metal backend)
-- Windowing: winit
-- Math: glam
-- ECS: hecs
-- Model loading: gltf
-- GPU buffer casting: bytemuck
-- Shading language: WGSL
+1. 🎨 Albedo + Metallic
+2. 📐 Normal + Roughness
+3. 📍 World Position
 
-## Getting Started
+The **Lighting Pass** then runs a single fullscreen triangle that samples the G-buffer and computes Cook-Torrance PBR shading per pixel.
+
+> Splitting geometry and lighting into separate passes means lighting complexity no longer scales with scene geometry — the same architecture used by Unreal Engine, CryEngine, and most modern AAA renderers.
+
+---
+
+## 🛠️ Tech Stack
+
+| Component | Crate |
+|---|---|
+| GPU API | `wgpu` (Metal backend) |
+| Windowing | `winit` |
+| Math | `glam` |
+| ECS | `hecs` |
+| Model loading | `gltf` |
+| GPU buffer casting | `bytemuck` |
+| Shading language | WGSL |
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
 - Rust (2021 edition or later)
 - macOS with Metal support (Intel or Apple Silicon)
 
-### Build and Run
-
+### Build & Run
+```bash
 git clone https://github.com/compiledbyutkarsh/prism.git
 cd prism
 cargo run --release
+```
 
-## Controls
+---
 
-- Left-click + drag: Orbit camera
-- Scroll wheel / trackpad pinch: Zoom in/out
+## 🎮 Controls
 
-## Roadmap
+| Input | Action |
+|---|---|
+| Left-click + drag | Orbit camera |
+| Scroll wheel / trackpad pinch | Zoom in/out |
+
+---
+
+## 🗺️ Roadmap
 
 - [x] wgpu + Metal foundation
 - [x] ECS scene graph
@@ -63,6 +85,8 @@ cargo run --release
 - [ ] Texture mapping (albedo, normal, metallic-roughness maps)
 - [ ] Skeletal animation
 
-## License
+---
 
-MIT (c) compiledbyutkarsh
+## 📄 License
+
+MIT © [compiledbyutkarsh](https://github.com/compiledbyutkarsh)
