@@ -84,9 +84,3 @@ cargo run --release
 - [ ] Multiple dynamic lights (point, spot, directional)
 - [ ] Texture mapping (albedo, normal, metallic-roughness maps)
 - [ ] Skeletal animation
-
----
-
-## 📄 License
-
-MIT © [compiledbyutkarsh](https://github.com/compiledbyutkarsh)
