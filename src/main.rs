@@ -31,7 +31,9 @@ struct State {
     camera_bind_group: wgpu::BindGroup,
 
     depth_texture_view: wgpu::TextureView,
-    rotation: f32,
+
+    mouse_pressed: bool,
+    last_mouse_pos: Option<(f64, f64)>,
 }
 
 fn create_depth_view(
@@ -237,7 +239,8 @@ impl State {
             camera_buffer,
             camera_bind_group,
             depth_texture_view,
-            rotation: 0.0,
+            mouse_pressed: false,
+            last_mouse_pos: None,
         }
     }
 
@@ -252,9 +255,19 @@ impl State {
         }
     }
 
+    fn handle_mouse_drag(&mut self, dx: f64, dy: f64) {
+        let sensitivity = 0.005;
+        self.camera.yaw -= dx as f32 * sensitivity;
+        self.camera.pitch += dy as f32 * sensitivity;
+        self.camera.pitch = self.camera.pitch.clamp(-1.4, 1.4);
+    }
+
+    fn handle_scroll(&mut self, delta: f32) {
+        self.camera.distance -= delta * 0.3;
+        self.camera.distance = self.camera.distance.clamp(1.0, 20.0);
+    }
+
     fn update(&mut self) {
-        self.rotation += 0.01;
-        self.camera.yaw = self.rotation;
         self.camera_uniform.update(&self.camera);
         self.queue.write_buffer(
             &self.camera_buffer,
@@ -340,6 +353,37 @@ fn main() {
                         WindowEvent::CloseRequested => elwt.exit(),
                         WindowEvent::Resized(physical_size) => {
                             state.resize(*physical_size);
+                        }
+                        WindowEvent::MouseInput { state: btn_state, button, .. } => {
+                            if *button == winit::event::MouseButton::Left {
+                                state.mouse_pressed = *btn_state == winit::event::ElementState::Pressed;
+                                if !state.mouse_pressed {
+                                    state.last_mouse_pos = None;
+                                }
+                            }
+                        }
+                        WindowEvent::CursorMoved { position, .. } => {
+                            if state.mouse_pressed {
+                                if let Some((last_x, last_y)) = state.last_mouse_pos {
+                                    let dx = position.x - last_x;
+                                    let dy = position.y - last_y;
+                                    state.handle_mouse_drag(dx, dy);
+                                }
+                                state.last_mouse_pos = Some((position.x, position.y));
+                            }
+                        }
+                        WindowEvent::MouseWheel { delta, .. } => {
+                            let scroll_amount = match delta {
+                                winit::event::MouseScrollDelta::LineDelta(_, y) => *y,
+                                winit::event::MouseScrollDelta::PixelDelta(pos) => (pos.y / 100.0) as f32,
+                            };
+                            state.handle_scroll(scroll_amount);
+                        }
+                        WindowEvent::TouchpadMagnify { delta, .. } => {
+                            // macOS pinch-to-zoom gesture; delta is a magnification
+                            // factor (e.g. 0.05 for pinch-out), so scale it up to
+                            // feel comparable to scroll-wheel zoom.
+                            state.handle_scroll((*delta as f32) * 10.0);
                         }
                         WindowEvent::RedrawRequested => {
                             state.update();
